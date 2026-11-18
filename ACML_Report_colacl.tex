@@ -1,0 +1,527 @@
+% ============================================================
+%  S&P 500 Stock Price Forecasting using Deep Learning
+%  COMS 4030A / COMS 7047A -- Adaptive Computation and Machine Learning
+%  University of Cape Town -- May 2026
+%
+%  Template: colacl (ACML / ACL conference paper format)
+%  Requires colacl.sty in the same directory (download from the
+%  shared Overleaf project).
+% ============================================================
+\documentclass[11pt]{article}
+\usepackage{colacl}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=black,citecolor=black]{hyperref}
+\sloppy
+
+% Column types for tables
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\title{S\&P 500 Stock Price Forecasting using Deep Learning}
+
+\author{
+  Zeeshaan Ebrahim \quad {\small (2543004)} \And
+  Tazeem Tayob \quad {\small (2659956)}
+  \\[6pt]
+  {\small COMS 4030A / COMS 7047A --- Adaptive Computation and Machine Learning} \\
+  {\small University of Cape Town, May 2026}
+}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+\begin{abstract}
+This report presents a comparative study of four deep learning
+architectures---Stacked LSTM, Bidirectional LSTM with Bahdanau
+Attention, CNN-LSTM Hybrid, and a custom Transformer Encoder---for
+next-day adjusted closing price forecasting across nine S\&P~500
+technology stocks (2010--2026). Models were trained on a unified
+dataset with 28 engineered features per timestep. Controlled
+experiments investigated the effects of window size, feature richness,
+dropout, prediction horizon, and L2 regularisation. The CNN-LSTM
+Hybrid achieved the best performance (RMSE \$41.83, MAE \$26.79,
+MAPE~10.28\%), demonstrating that causal convolutional feature
+extraction combined with recurrent long-range modelling is
+particularly effective for financial time-series forecasting.
+\end{abstract}
+
+% ============================================================
+\section{Dataset Description \& Objectives}
+
+\textbf{Source:} Kaggle --- S\&P 500 Top 10 Stocks OHLCV (2010--2026).
+The dataset contains split-adjusted daily trading data for nine S\&P~500
+technology companies, spanning over 15 years of market history.
+
+\begin{table}[h]
+\caption{Dataset Columns}
+\label{tab:dataset-cols}
+\begin{tabularx}{\linewidth}{L{2.8cm} X}
+\toprule
+\textbf{Column} & \textbf{Description} \\
+\midrule
+Date        & Trading date (YYYY-MM-DD) \\
+Ticker      & Stock symbol (9 unique tickers) \\
+Open        & Opening price (split-adjusted) \\
+High        & Daily high price \\
+Low         & Daily low price \\
+Close       & Closing price \\
+Adj\_Close  & Adjusted closing price (primary target) \\
+Volume      & Number of shares traded \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Tickers:} AAPL, AMZN, AVGO, GOOG, GOOGL, META,
+MSFT, NVDA, TSLA
+
+\noindent\textbf{Dataset statistics:} 35,765 rows $|$ 9 stocks $|$
+Date range: 2010-01-04 to 2026-02-13 $|$ Missing values: 0
+
+\subsection{Objectives}
+
+\begin{itemize}
+  \item Build a single unified deep learning model to forecast the
+        next trading day's adjusted closing price for any of the nine
+        stocks simultaneously.
+  \item Compare four architectures: Stacked LSTM, Bidirectional LSTM
+        with Attention, CNN-LSTM Hybrid, and custom Transformer Encoder.
+  \item Investigate how window size, feature richness, dropout,
+        prediction horizon, and L2 regularisation affect forecast
+        accuracy.
+\end{itemize}
+
+% ============================================================
+\section{Preprocessing \& Data Splits}
+
+\subsection{Feature Engineering}
+
+17 additional technical indicators were computed per stock using only
+information available up to time $t$ (no lookahead bias). All rolling
+calculations were performed per-ticker to prevent cross-stock
+contamination.
+
+\begin{table}[h]
+\caption{Engineered Features}
+\label{tab:features}
+\begin{tabularx}{\linewidth}{L{3.2cm} X}
+\toprule
+\textbf{Feature Group} & \textbf{Features} \\
+\midrule
+Trend (SMA)   & SMA\_5, SMA\_20, SMA\_50 \\
+Trend (EMA)   & EMA\_12, EMA\_26, MACD \\
+Momentum      & RSI\_14 \\
+Volatility    & BB\_upper, BB\_lower, BB\_bandwidth \\
+Volume        & Volume\_MA\_10 \\
+Returns       & Daily\_Return, Volatility\_10 \\
+Identity      & Ticker one-hot encoding (9 dimensions) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Total: 28 features per timestep.}
+
+\subsection{Normalisation}
+
+MinMaxScaler was fitted exclusively on the training slice of each stock
+to prevent data leakage. The same fitted scaler was then applied to the
+validation and test slices. Scalers were stored per-ticker to ensure
+correct inverse transformation during evaluation.
+
+\subsection{Data Splits}
+
+\begin{table}[h]
+\caption{Data Splits}
+\label{tab:splits}
+\begin{tabularx}{\linewidth}{L{1.8cm} L{3.4cm} C{2.0cm} X}
+\toprule
+\textbf{Split} & \textbf{Date Range} & \textbf{Seqs.} & \textbf{Purpose} \\
+\midrule
+Train      & 2010-01-04 to 2022-12-31 & 27,746 & Fit models and learn weights \\
+Validation & 2023-01-01 to 2024-06-30 & 2,826  & Hyperparameter tuning and early stopping \\
+Test       & 2024-07-01 to 2026-02-13 & 3,132  & Final evaluation (never seen during training) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Sequence Creation}
+
+A sliding window of 60 trading days ($\approx$3 months) was used.
+For each sample, $X =$ features for days $[t-60,\,t-1]$ and $y =$
+normalised Adj\_Close at day $t$. Sequences from all nine stocks were
+stacked into a single shared dataset.
+
+% ============================================================
+\section{Model Selection \& Implementation}
+
+All models were implemented in PyTorch 2.2.2 and trained with the
+Adam optimiser ($\text{lr}=10^{-3}$), MSE loss, gradient clipping
+(max norm $= 1.0$), EarlyStopping (patience $= 10$), and
+ReduceLROnPlateau (factor $= 0.5$, patience $= 5$).
+
+\subsection{Model 1 --- Stacked LSTM (Baseline)}
+
+A two-layer stacked LSTM with dropout regularisation serves as the
+baseline.
+
+\noindent\textbf{Architecture:}
+$\text{Input}(60,28) \to \text{LSTM}(128,\;\text{return\_seq}=\text{True})
+\to \text{Dropout}(0.2) \to \text{LSTM}(64) \to \text{Dropout}(0.2)
+\to \text{Linear}(32) \to \text{ReLU} \to \text{Linear}(1)$
+
+\noindent\textbf{Parameters:} 132,673 \quad $|$ \quad
+\textbf{Best validation loss:} 0.070183
+
+\subsection{Model 2 --- Bidirectional LSTM with Bahdanau Attention}
+
+Bidirectional LSTMs capture both forward and backward temporal context
+within the 60-day window. A custom Bahdanau-style attention mechanism
+computes a weighted sum of hidden states, allowing the model to focus
+on the most predictive timesteps. The final context vector is passed
+through a fully connected head.
+
+\noindent\textbf{Parameters:} 330,946 \quad $|$ \quad
+\textbf{Best validation loss:} 0.115797
+
+\subsection{Model 3 --- CNN-LSTM Hybrid}
+
+Temporal causal convolutions act as local pattern extractors detecting
+short-term momentum shifts, while the LSTM captures long-range
+sequential dependencies. Causal padding (left-padding only) prevents
+any future information leakage into the convolutional feature maps.
+
+\noindent\textbf{Parameters:} 51,169 \quad $|$ \quad
+\textbf{Best validation loss:} 0.012034
+
+\subsection{Model 4 --- Custom Transformer Encoder}
+
+Built entirely from scratch using PyTorch primitives following the
+Vaswani et al.\ (2017) encoder design with multi-head self-attention,
+position-wise feed-forward networks, layer normalisation, and residual
+connections. Sinusoidal positional encodings were applied to the input
+embeddings.
+
+\noindent\textbf{Parameters:} 76,865 \quad $|$ \quad
+\textbf{Best validation loss:} 0.122278
+
+% ============================================================
+\section{Experiments \& Fine-Tuning}
+
+Five controlled experiments were conducted using the LSTM as a
+baseline (except Experiment 5 which used the Transformer).
+
+\subsection{Experiment 1 --- Window Size}
+
+The sequence length was varied across 20, 30, and 60 trading days to
+assess the impact of lookback horizon on forecast accuracy.
+
+\begin{table}[h]
+\caption{Window Size vs.\ Validation RMSE}
+\label{tab:window}
+\begin{tabularx}{\linewidth}{C{4.0cm} C{4.0cm}}
+\toprule
+\textbf{Window Size} & \textbf{Val RMSE} \\
+\midrule
+20 days & 0.1599 \\
+30 days & 0.1952 \\
+\textbf{60 days (best)} & \textbf{0.0749} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Result:} A 60-day window significantly outperformed
+shorter windows, capturing quarterly price trends and momentum cycles
+invisible at shorter horizons.
+
+\subsection{Experiment 2 --- Feature Ablation}
+
+OHLCV-only (6 features) was compared against the full technical
+indicator set (28 features).
+
+\begin{table}[h]
+\caption{Feature Set vs.\ Validation RMSE}
+\label{tab:feat-ablation}
+\begin{tabularx}{\linewidth}{X C{3.5cm}}
+\toprule
+\textbf{Feature Set} & \textbf{Val RMSE} \\
+\midrule
+OHLCV-only (6 features) & Higher RMSE \\
+\textbf{Full features with indicators (28)} & \textbf{Lower RMSE (winner)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Result:} Technical indicators (MACD, RSI, Bollinger
+Bands) provided meaningful additional signal, reducing RMSE compared
+to raw price and volume data alone.
+
+\subsection{Experiment 3 --- Dropout Rate}
+
+Three dropout rates were tested on the LSTM.
+
+\begin{table}[h]
+\caption{Dropout Rate vs.\ Validation RMSE}
+\label{tab:dropout}
+\begin{tabularx}{\linewidth}{C{4.0cm} C{4.0cm}}
+\toprule
+\textbf{Dropout Rate} & \textbf{Val RMSE} \\
+\midrule
+\textbf{0.1 (best)} & \textbf{0.1325} \\
+0.2 & 0.2322 \\
+0.3 & 0.3171 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Result:} A dropout rate of 0.1 achieved the lowest
+validation RMSE. Higher dropout rates caused underfitting.
+
+\subsection{Experiment 4 --- Prediction Horizon}
+
+1-day and 5-day ahead forecasting were compared on the LSTM.
+
+\begin{table}[h]
+\caption{Prediction Horizon vs.\ Validation RMSE}
+\label{tab:horizon}
+\begin{tabularx}{\linewidth}{C{4.0cm} C{4.0cm}}
+\toprule
+\textbf{Horizon} & \textbf{Val RMSE} \\
+\midrule
+\textbf{1 day ahead (winner)} & \textbf{Lower RMSE} \\
+5 days ahead & Higher RMSE ($\approx$doubled) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Result:} The 5-day horizon was significantly harder,
+with RMSE roughly doubling, indicating rapid error accumulation over
+multiple timesteps.
+
+\subsection{Experiment 5 --- L2 Regularisation (Transformer)}
+
+Weight decay was applied to the Transformer optimiser across three
+settings.
+
+\begin{table}[h]
+\caption{Weight Decay vs.\ Validation RMSE (Transformer)}
+\label{tab:l2}
+\begin{tabularx}{\linewidth}{C{4.0cm} C{4.0cm}}
+\toprule
+\textbf{Weight Decay} & \textbf{Val RMSE} \\
+\midrule
+0 (none) & 0.3389 \\
+\textbf{$10^{-4}$ (best)} & \textbf{0.3250} \\
+$10^{-3}$ & 0.3484 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Result:} Mild L2 regularisation ($10^{-4}$) slightly
+improved generalisation. Strong regularisation ($10^{-3}$) caused
+underfitting.
+
+% ============================================================
+\section{Training Visualisations}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig1}
+  \caption{Normalised adjusted closing prices for all 9 stocks
+    (2010--2026).}
+  \label{fig:norm-prices}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig2}
+  \caption{Cross-stock return correlation heatmap.}
+  \label{fig:corr}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig3}
+  \caption{Daily trading volume distribution by stock.}
+  \label{fig:volume}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig4}
+  \caption{Training and validation MSE loss curves for all four models.}
+  \label{fig:loss}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig5}
+  \caption{Experiment results: window size, feature ablation, and
+    dropout rate.}
+  \label{fig:exp135}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig6}
+  \caption{Experiment results: prediction horizon and L2
+    regularisation.}
+  \label{fig:exp45}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig7}
+  \caption{BiLSTM attention weight heatmap over the 60-day lookback
+    window.}
+  \label{fig:attention}
+\end{figure}
+
+% ============================================================
+\section{Test Results \& Analysis}
+
+All predictions were inverse-transformed from normalised $[0,1]$ space
+back to actual dollar prices before computing metrics.
+
+\begin{table}[h]
+\caption{Test Set Performance Across All Models}
+\label{tab:results}
+\begin{tabularx}{\linewidth}{L{2.8cm} C{1.6cm} C{1.6cm} C{1.8cm} C{2.0cm}}
+\toprule
+\textbf{Model} &
+\textbf{RMSE (\$)} &
+\textbf{MAE (\$)} &
+\textbf{MAPE (\%)} &
+\textbf{Dir.\ Acc.\ (\%)} \\
+\midrule
+LSTM                 & 79.953  & 55.399 & 19.857 & 49.38 \\
+BiLSTM + Attn.       & 98.377  & 69.123 & 23.934 & 50.40 \\
+\textbf{CNN-LSTM}    & \textbf{41.827} & \textbf{26.785} & \textbf{10.278} & \textbf{51.17} \\
+Transformer          & 101.240 & 71.212 & 24.502 & 50.46 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Best model:} CNN-LSTM with RMSE \$41.83, MAE \$26.79,
+MAPE~10.28\%, Directional Accuracy 51.17\%.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig8}
+  \caption{Test set performance comparison --- RMSE, MAE, MAPE across
+    all models.}
+  \label{fig:perf}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig9}
+  \caption{Actual vs.\ predicted Adj\_Close for AAPL, NVDA, TSLA
+    (test set).}
+  \label{fig:actual-pred}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{fig10}
+  \caption{Residual error distribution per stock --- CNN-LSTM (best
+    model).}
+  \label{fig:residuals}
+\end{figure}
+
+\subsection{Analysis}
+
+The CNN-LSTM hybrid achieved the best performance across all metrics
+by a significant margin. Its RMSE of \$41.83 was roughly half that of
+the LSTM (\$79.95) and less than half that of the Transformer
+(\$101.24). The local pattern extraction performed by the causal
+convolutional layers proved highly effective at capturing short-term
+momentum shifts before they are passed to the LSTM for longer-range
+modelling.
+
+The Bidirectional LSTM with Attention underperformed relative to
+expectations. While attention mechanisms are theoretically beneficial,
+the added model complexity (330K parameters, $2.5\times$ more than the
+LSTM baseline) led to overfitting despite dropout regularisation.
+
+The Transformer Encoder was the weakest performer (\$101.24 RMSE).
+Without pre-training on large datasets, Transformers tend to require
+substantially more data to generalise---the approximately 27,000
+training sequences available were insufficient to exploit the
+architecture's full capacity.
+
+All four models achieved directional accuracy close to 50\%, slightly
+better than random chance. This is consistent with the Efficient Market
+Hypothesis, which posits that short-term price direction is inherently
+difficult to predict from historical price data alone.
+
+Residual distributions for all stocks are approximately centred around
+zero, indicating no systematic bias. However, residuals are wider for
+high-volatility stocks (NVDA, TSLA) compared to more stable equities
+(AAPL, MSFT), reflecting the greater difficulty of forecasting highly
+volatile assets.
+
+% ============================================================
+\section{Conclusions}
+
+Four deep learning architectures were trained on a unified dataset of
+nine S\&P~500 technology stocks to forecast next-day adjusted closing
+prices. The CNN-LSTM hybrid was the clear best performer, achieving the
+lowest RMSE, MAE, and MAPE across all nine stocks.
+
+\subsection{What Worked}
+
+\begin{itemize}
+  \item Engineering technical indicators (MACD, RSI, Bollinger Bands)
+        reduced RMSE compared to raw OHLCV data alone.
+  \item A 60-day lookback window significantly outperformed 20- and
+        30-day windows, capturing quarterly trend cycles.
+  \item Causal convolutional feature extraction (CNN-LSTM) was more
+        effective than pure recurrent or attention-based approaches.
+  \item ReduceLROnPlateau scheduling and early stopping prevented
+        overfitting and reduced training time.
+\end{itemize}
+
+\subsection{What Did Not Work}
+
+\begin{itemize}
+  \item The 5-day prediction horizon was significantly harder, with
+        RMSE roughly doubling.
+  \item High dropout rates (0.3) degraded performance, suggesting
+        underfitting beyond this threshold.
+  \item Strong L2 regularisation (weight\_decay $= 10^{-3}$) caused
+        underfitting in the Transformer.
+  \item The Bidirectional LSTM with Attention overfitted despite
+        dropout regularisation.
+\end{itemize}
+
+\subsection{Limitations}
+
+\begin{itemize}
+  \item No fundamental data (earnings, macroeconomic indicators) were
+        used; models rely solely on technical price history.
+  \item Financial time-series are non-stationary; concept drift events
+        (e.g.\ market crashes) pose challenges not addressed here.
+  \item Directional accuracy near 50\% limits practical trading
+        utility.
+\end{itemize}
+
+\subsection{Future Work}
+
+\begin{itemize}
+  \item \textbf{Cross-stock attention:} allow each stock to attend to
+        signals from the other eight.
+  \item \textbf{Multi-step forecasting:} recursive forecasting with
+        uncertainty quantification via Monte Carlo Dropout.
+  \item \textbf{Ensemble methods:} combine all four architectures for
+        lower-variance predictions.
+  \item \textbf{Richer features:} incorporate fundamental and
+        macroeconomic indicators.
+\end{itemize}
+
+\end{document}

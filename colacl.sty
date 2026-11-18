@@ -1,0 +1,144 @@
+%
+% colacl.sty
+%
+\typeout{}
+\typeout{ALTW 2005 Proceedings style -- June 7th 2005}
+\typeout{derived from}
+\typeout{ACL-COLING 1998 Proceedings style -- March 31st 1998}
+\typeout{}
+%
+% ----------------------------------------------------------------------
+%
+% This is the LaTeX style file for ACL-COLING 1998.  It is based on
+% a series of similar files prepared for previous conferences by
+% Fernando Pereira, Paul Jacobs, Stuart Shieber, Peter F.
+% Patel-Schneider and others.  Various changes have been made, chiefly
+% to save space in the final output or remove redundant definitions.
+%
+% colacl.sty is designed for use as a package or option with the
+% standard LaTeX article class, and the BibTeX style acl.bst.
+%
+% ----------------------------------------------------------------------
+%
+% Page layout
+
+\setlength\topmargin{0.0in}
+\setlength\oddsidemargin{0.0in}
+\setlength\evensidemargin{0.0in}
+\setlength\textheight{9.0in}
+\setlength\textwidth{6.5in}
+\setlength\columnsep{0.25in}
+\setlength\headheight{0pt}
+\setlength\headsep{0pt}
+
+\thispagestyle{empty}
+\pagestyle{empty}
+\flushbottom
+\twocolumn
+\sloppy
+
+% ----------------------------------------------------------------------
+% Title block
+
+\def\maketitle{\par
+  \begingroup
+    \renewcommand\thefootnote{\fnsymbol{footnote}}%
+    \def\@makefnmark{\hbox to 0pt{$\m@th^{\@thefnmark}$\hss}}%
+    \long\def\@makefntext##1{\parindent 1em\noindent
+      \hbox to 1.8em{\hss$\m@th^{\@thefnmark}$}##1}%
+    \twocolumn[\@maketitle]%
+    \thispagestyle{empty}\@thanks
+  \endgroup
+  \setcounter{footnote}{0}%
+  \let\maketitle\relax
+  \let\@maketitle\relax
+  \gdef\@thanks{}\gdef\@author{}\gdef\@title{}\let\thanks\relax}
+
+\def\@maketitle{\vbox{\hsize\textwidth
+  \linewidth\hsize \vskip 0.1in minus 0.1in \centering
+  {\Large\bf \@title \par}
+  \vskip 0.2in plus 1fil minus 0.1in
+  {\def\and{\unskip\enspace{\rm and}\enspace}%
+   \def\And{\end{tabular}\hss \egroup \hskip 1in plus 2fil
+      \hbox to 0pt\bgroup\hss
+      \begin{tabular}[t]{c}\bf}%
+   \def\AND{\end{tabular}\hss\egroup \hfil\egroup
+      \vskip 0.1in minus 0.1in
+      \hbox to \linewidth\bgroup\large \hfil
+      \hbox to 0pt\bgroup\hss \begin{tabular}[t]{c}\bf}
+   \hbox to \linewidth\bgroup\large \hfil
+   \hbox to 0pt\bgroup\hss \begin{tabular}[t]{c}\bf\@author
+   \end{tabular}\hss\egroup
+   \hfil\egroup}
+  \vskip 0.3in plus 2fil minus 0.1in}}
+
+% ----------------------------------------------------------------------
+% Abstract environment
+
+\renewenvironment{abstract}{%
+  \centerline{\large\bf Abstract}%
+  \begin{list}{}{\setlength{\rightmargin}{0.6cm}\setlength{\leftmargin}{0.6cm}}%
+  \item\relax\ignorespaces}{%
+  \end{list}%
+}
+
+% ----------------------------------------------------------------------
+% Section headings
+
+\renewcommand\section{\@startsection{section}{1}{\z@}%
+                      {-2.0ex plus -0.5ex minus -0.2ex}%
+                      {0.5ex plus 0.2ex}%
+                      {\large\bf\raggedright}}
+
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}%
+                      {-1.5ex plus -0.5ex minus -0.2ex}%
+                      {0.3ex plus 0.2ex}%
+                      {\normalsize\bf\raggedright}}
+
+\renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}%
+                      {-1.5ex plus -0.5ex minus -0.2ex}%
+                      {0.3ex plus 0.2ex}%
+                      {\normalsize\bf\raggedright}}
+
+% ----------------------------------------------------------------------
+% Float parameters
+
+\setcounter{topnumber}{4}
+\setcounter{bottomnumber}{1}
+\setcounter{totalnumber}{5}
+\def\topfraction{1.0}
+\def\bottomfraction{0.5}
+\def\floatpagefraction{0.9}
+\def\dbltopfraction{1.0}
+\def\dblfloatpagefraction{0.9}
+
+\setlength\floatsep    {6\p@ \@plus 2\p@ \@minus 2\p@}
+\setlength\textfloatsep{10\p@ \@plus 2\p@ \@minus 4\p@}
+\setlength\intextsep   {6\p@ \@plus 2\p@ \@minus 2\p@}
+\setlength\dblfloatsep    {6\p@ \@plus 2\p@ \@minus 2\p@}
+\setlength\dbltextfloatsep{18\p@ \@plus 2\p@ \@minus 4\p@}
+
+% ----------------------------------------------------------------------
+% Top-level list spacing in \normalsize text
+
+\ifcase\@ptsize%
+    \def\@listi{\leftmargin\leftmargini%           10pt
+                \topsep  6\p@ \@plus2\p@ \@minus2\p@%
+                \parsep  2\p@ \@plus0.5\p@ \@minus\p@%
+                \itemsep 2.5\p@ \@plus\p@ \@minus0.5\p@}%
+ \or%
+    \def\@listi{\leftmargin\leftmargini%           11pt
+                \topsep  8\p@ \@plus2\p@ \@minus2\p@%
+                \parsep  3\p@ \@plus1.5\p@ \@minus\p@%
+                \itemsep 3\p@ \@plus1.5\p@ \@minus\p@}%
+ \or%
+    \def\@listi{\leftmargin\leftmargini%           12pt
+                \topsep  9\p@ \@plus3\p@   \@minus4\p@%
+                \parsep  4\p@  \@plus2\p@ \@minus\p@%
+                \itemsep 4\p@  \@plus2\p@ \@minus\p@}%
+ \fi
+\let\@listI\@listi
+
+% ----------------------------------------------------------------------
+% End of colacl.sty
+% ----------------------------------------------------------------------

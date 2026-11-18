@@ -1,0 +1,10 @@
+node_modules/
+.ipynb_checkpoints/
+.claude/
+__pycache__/
+.DS_Store
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.synctex.gz
